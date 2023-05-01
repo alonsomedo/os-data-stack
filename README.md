@@ -188,6 +188,15 @@ Enter a valid email when trying to log in.
     - Finally select `Add & Deploy` `and then View Service`
     - Run the metadata ingestion.
 8. Create a DBT Ingestion **Mandatory  (For our example)**
+    - **dbt_Configuration_Source:** `S3_Config_Source`
+    - **AWS_Access_Key_ID**: `minio_admin`
+    - **AWS_Secret_Access_Key**: `minio_password`
+    - **AWS_Region**: `us-east-1``
+    - **Endpoint_URL**: `http://host.docker.internal:9000`
+    - **dbt_Bucket_Name**: `dbt`
+    - **dbt_Object_Prefix**: `dwh`
+    - Select `Next`, choose a `Manual` schedule interval.
+    - Run the DBT ingestion
 9. Create Lineage Ingestion **Optional**
 9. Create a Profiler Ingestion **Optional**
     - Recommended to filter schema and target only: `bronze,silver,gold`
@@ -206,7 +215,7 @@ Enter a valid email when trying to log in.
     - Username: `airflow`
     - Password: `airflow`
     - Host_and_Port: `host.docker.internal:5432`
-    - Database: `dwh`
+    - Database: `airflow`
 7. Test your connection and save.
 8. Navigate to your airflow service connection and create a metadata ingestion. 
 9. Run the metadata ingestion.
