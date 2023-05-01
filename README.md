@@ -65,6 +65,10 @@ Enter a valid email when trying to log in.
 
 ---
 
+## Youtube Video
+In the below youtube video, I show you how to set up everything.
+- [Open Source Data Stack](https://www.youtube.com/watch?v=Ncgyg_wxEy4)
+
 ## Setup Instructions
 1. Open your terminal.
 2. Navigate to the root of the `os-data-stack` repository
@@ -150,7 +154,7 @@ Enter a valid email when trying to log in.
 7. Select Connections (*left sidebar*)
     - Select the `S3_customer_information_cdc` source
     - Select `Use existing destination`
-    - In the destination tab select Postgres_DWH and select `Use existing destination`
+    - In the destination tab select **Postgres_DWH** and select `Use existing destination`
     - In the new screen view, change the `Replication frequency` to `Manual`
     - Sync mode should be `Full refresh overwrite` (*2023-05-01 - Incremental sync mode isn't  working, data gets duplicated when using it, maybe because the Postgres connector is in Alpha*)
     - Select `set up connection`
@@ -164,19 +168,19 @@ Enter a valid email when trying to log in.
 
 ### Database Services - Postgres
 1. Open openmetadata, enter your credentials
-    - username: `admin`
-    - password: `admin`
+    - **username:** `admin`
+    - **password:** `admin`
 2. Select `Services` in the left sidebar.
 3. Select `Add New Service` in the right top corner.
 4. Create the Postgres database service.
     - Select Database Services.
-    - Select the Postgres connector and select `Next`
+    - Select the **Postgres connector** and select `Next`
     - Enter `postgres_con` as service name and select `Next`
     - Fill out the fields for the connection:
-        - Username: `dwh`
-        - Password: `dwh`
-        - Host_and_Port: `postgres_dwh`
-        - Database: `dwh`
+        - **Username:** `dwh`
+        - **Password:** `dwh`
+        - **Host_and_Port:** `postgres_dwh`
+        - **Database:** `dwh`
     - Test your connection and select `save`
 5. Select your connection.
 6. Select the tab called `Ingestions`
@@ -191,7 +195,7 @@ Enter a valid email when trying to log in.
     - **dbt_Configuration_Source:** `S3_Config_Source`
     - **AWS_Access_Key_ID**: `minio_admin`
     - **AWS_Secret_Access_Key**: `minio_password`
-    - **AWS_Region**: `us-east-1``
+    - **AWS_Region**: `us-east-1`
     - **Endpoint_URL**: `http://host.docker.internal:9000`
     - **dbt_Bucket_Name**: `dbt`
     - **dbt_Object_Prefix**: `dwh`
@@ -210,12 +214,12 @@ Enter a valid email when trying to log in.
 4. Select `Airflow` and then `Next`
 5. Enter a name for your service connection and select `Next`
 6. Enter the below configuration:
-    - Host_and_Port: `http://localhost:8085/`
-    - Metadata_Database_Connection: `PostgresConnection`
-    - Username: `airflow`
-    - Password: `airflow`
-    - Host_and_Port: `host.docker.internal:5432`
-    - Database: `airflow`
+    - **Host_and_Port:** `http://localhost:8085/`
+    - **Metadata_Database_Connection:** `PostgresConnection`
+    - **Username:** `airflow`
+    - **Password:** `airflow`
+    - **Host_and_Port:** `host.docker.internal:5432`
+    - **Database:** `airflow`
 7. Test your connection and save.
 8. Navigate to your airflow service connection and create a metadata ingestion. 
 9. Run the metadata ingestion.
@@ -227,10 +231,10 @@ Enter a valid email when trying to log in.
 4. Select `Airbyte` and then `Next`
 5. Enter a name for your service connection and select `Next`
 6. Enter the below configuration:
-    - Host_and_Port: `http://host.docker.internal:8000`
-    - Metadata_Database_Connection: `PostgresConnection`
-    - Username: `airbyte`
-    - Password: `password`
+    - **Host_and_Port:** `http://host.docker.internal:8000`
+    - **Metadata_Database_Connection:** `PostgresConnection`
+    - **Username:** `airbyte`
+    - **Password:** `password`
 7. Test your connection and save.
 8. Navigate to your airflow service connection and create a metadata ingestion. 
 9. Run the metadata ingestion.
