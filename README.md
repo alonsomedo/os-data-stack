@@ -6,6 +6,7 @@ Previously on the following [Azure Databricks - Data Pipeline](https://medium.co
 - **Airflow:** task orchestration - http://localhost:8085/
 - **PostgreSQL:** data storage
 - **Openmetadata:** data catalog - http://localhost:8585/
+- **Minio:** object storage - http://localhost:9090/
 
 ## Use Case Explanation
 We will be working with transactional data referred to loan transactions and customers from GeekBankPE (a famous bank around the world).
@@ -96,7 +97,10 @@ Enter a valid email when trying to log in.
 5. Create the Airbyte connection (Optional, in case you want to use the stack for your own development)
     - **Connection Type:** `Airbyte`
     - **Connection Id:** `airbyte_default`
-    - **Host:** `airbyte_server`
+    - **Host:** `host.docker.internal`
+    - **Username:** `airbyte`
+    - **Password:** `password`
+    - **Port:**: `8000`
 
 ---
 
