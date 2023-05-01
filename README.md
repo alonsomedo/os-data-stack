@@ -26,6 +26,44 @@ To fulfill with the request, we are going to perform incremental loads and also 
 - Python 3.6 or higher
 - Recommended 8GB RAM or higher only for docker containers.
 
+---
+
+## Credentials
+
+### Airflow
+- **username:** `airflow`
+- **password:** `airflow`
+
+### Minio
+Minio acces and secret keys along with url_endpoint are used to log in and for connections.
+- **minio_access_key:** `minio_admin`
+- **minio_secret_key:** `minio_password`
+- **url_endpoint:** http://host.docker.internal:9000
+- **port:** 9000
+
+### Postgres DWH
+- **username:** `dwh`
+- **password:** `dwh`
+- **external_host:** `local_host`
+- **external_port:** 5455
+- **internal_host:** `postgres_dwh`
+- **interal_port:** `5432`
+*If you connect to your database through Mysql or DBeaver, you need to use the external host and port.*
+
+### Airbyte
+Enter a valid email when trying to log in.
+- For other configurations:
+ - **internal_host:** `host.docker.internal`
+ - **internal_host_and_port:** `http://host.docker.internal:8000`
+ - **user:** `airbyte`
+ - **password:** `password`
+
+### Openmetadata
+- **username:** `admin`
+- **password:** `admin`
+
+---
+
 ## Setup Instructions
 1. Open your terminal.
 2. Navigate to the root of the `os-data-stack` repository
@@ -201,38 +239,3 @@ To fulfill with the request, we are going to perform incremental loads and also 
  - `dbt build --profiles-dir "../" --target prod_localhost --vars '{ target_date: 2022-09-12 }' --select gold` 
  - `dbt test --profiles-dir "../" --target prod_localhost --vars '{ target_date: 2022-09-12 }' --select gold`
 **Note: Some of the tasks will be marked as `ERROR` when running a DBT command  because data is already loaded.**
-
----
-
-## Credentials
-
-### Airflow
-- **username:** `airflow`
-- **password:** `airflow`
-
-### Minio
-Minio acces and secret keys along with url_endpoint are used to log in and for connections.
-- **minio_access_key:** `minio_admin`
-- **minio_secret_key:** `minio_password`
-- **url_endpoint:** http://host.docker.internal:9000
-- **port:** 9000
-
-### Postgres DWH
-- **username:** `dwh`
-- **password:** `dwh`
-- **external_host:** `local_host`
-- **external_port:** 5455
-- **internal_host:** `postgres_dwh`
-- **interal_port:** `5432`
-*If you connect to your database through Mysql or DBeaver, you need to use the external host and port.*
-
-### Airbyte
-Enter a valid email when trying to log in.
-- For other configurations:
- - **internal_host:** `http://host.docker.internal:8000`
- - **user:** `airbyte`
- - **password:** `password`
-
-### Openmetadata
-- **username:** `admin`
-- **password:** `admin`
