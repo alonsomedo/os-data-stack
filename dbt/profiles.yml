@@ -1,0 +1,24 @@
+dwh:
+  outputs:
+
+    prod_localhost:
+      type: postgres
+      threads: 4
+      host: localhost
+      port: 5455
+      user: dwh
+      pass: dwh
+      dbname: dwh
+      schema: bronze
+
+    prod_airflow:
+      type: postgres
+      threads: 4
+      host: postgres_dwh
+      port: 5432
+      user: dwh
+      pass: dwh
+      dbname: dwh
+      schema: bronze
+
+  target: prod_localhost

@@ -1,0 +1,703 @@
+version: '3.8'
+######################################
+### AIRBYTE 
+######################################
+x-logging: &default-logging
+  options:
+    max-size: "100m"
+    max-file: "5"
+  driver: json-file
+
+######################################
+### AIRFLOW
+######################################
+x-airflow-common:
+  &airflow-common
+  # In order to add custom dependencies or upgrade provider packages you can use your extended image.
+  # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
+  # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
+  #image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.5.1}
+  build: ./docker/airflow
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    # For backward compatibility, with Airflow <2.3
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
+    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: 30
+    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+  volumes:
+    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
+    
+    # Manual mappings performed
+    - ${AIRFLOW_PROJ_DIR:-.}/dbt:/opt/airflow/dbt
+    - ${AIRFLOW_PROJ_DIR:-.}/data_csv:/opt/airflow/data_csv
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+
+services:
+
+  ###########################################################
+  ## AIRFLOW
+  ##########################################################
+
+  postgres:
+    image: postgres:13
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres-db-volume:/var/lib/postgresql/data
+    ports:
+      - 5432:5432
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  redis:
+    image: redis:latest
+    expose:
+      - 6379
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 30s
+      retries: 50
+    restart: always
+
+  airflow-webserver:
+    <<: *airflow-common
+    command: webserver
+    ports:
+      - 8085:8080
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8085/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    <<: *airflow-common
+    command: scheduler
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-worker:
+    <<: *airflow-common
+    command: celery worker
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - 'celery --app airflow.executors.celery_executor.app inspect ping -d "celery@$${HOSTNAME}"'
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    environment:
+      <<: *airflow-common-env
+      # Required to handle warm shutdown of the celery workers properly
+      # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
+      DUMB_INIT_SETSID: "0"
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-triggerer:
+    <<: *airflow-common
+    command: triggerer
+    healthcheck:
+      test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-init:
+    <<: *airflow-common
+    entrypoint: /bin/bash
+    # yamllint disable rule:line-length
+    command:
+      - -c
+      - |
+        function ver() {
+          printf "%04d%04d%04d%04d" $${1//./ }
+        }
+        airflow_version=$$(AIRFLOW__LOGGING__LOGGING_LEVEL=INFO && gosu airflow airflow version)
+        airflow_version_comparable=$$(ver $${airflow_version})
+        min_airflow_version=2.2.0
+        min_airflow_version_comparable=$$(ver $${min_airflow_version})
+        if (( airflow_version_comparable < min_airflow_version_comparable )); then
+          echo
+          echo -e "\033[1;31mERROR!!!: Too old Airflow version $${airflow_version}!\e[0m"
+          echo "The minimum Airflow version supported: $${min_airflow_version}. Only use this or higher!"
+          echo
+          exit 1
+        fi
+        if [[ -z "${AIRFLOW_UID}" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
+          echo "If you are on Linux, you SHOULD follow the instructions below to set "
+          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
+          echo "For other operating systems you can get rid of the warning with manually created .env file:"
+          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#setting-the-right-airflow-user"
+          echo
+        fi
+        one_meg=1048576
+        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
+        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
+        disk_available=$$(df / | tail -1 | awk '{print $$4}')
+        warning_resources="false"
+        if (( mem_available < 4000 )) ; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough memory available for Docker.\e[0m"
+          echo "At least 4GB of memory required. You have $$(numfmt --to iec $$((mem_available * one_meg)))"
+          echo
+          warning_resources="true"
+        fi
+        if (( cpus_available < 2 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough CPUS available for Docker.\e[0m"
+          echo "At least 2 CPUs recommended. You have $${cpus_available}"
+          echo
+          warning_resources="true"
+        fi
+        if (( disk_available < one_meg * 10 )); then
+          echo
+          echo -e "\033[1;33mWARNING!!!: Not enough Disk space available for Docker.\e[0m"
+          echo "At least 10 GBs recommended. You have $$(numfmt --to iec $$((disk_available * 1024 )))"
+          echo
+          warning_resources="true"
+        fi
+        if [[ $${warning_resources} == "true" ]]; then
+          echo
+          echo -e "\033[1;33mWARNING!!!: You have not enough resources to run Airflow (see above)!\e[0m"
+          echo "Please follow the instructions to increase amount of resources available:"
+          echo "   https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#before-you-begin"
+          echo
+        fi
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    # yamllint enable rule:line-length
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+      _PIP_ADDITIONAL_REQUIREMENTS: ''
+    user: "0:0"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}:/sources
+
+  airflow-cli:
+    <<: *airflow-common
+    profiles:
+      - debug
+    environment:
+      <<: *airflow-common-env
+      CONNECTION_CHECK_MAX_COUNT: "0"
+    # Workaround for entrypoint issue. See: https://github.com/apache/airflow/issues/16252
+    command:
+      - bash
+      - -c
+      - airflow
+  
+  ###########################################################
+  ## DATA WAREHOUSE
+  ##########################################################
+
+  postgres_dwh:
+    build: ./docker/postgres_dwh
+    environment:
+      POSTGRES_USER: dwh
+      POSTGRES_PASSWORD: dwh
+      POSTGRES_DB: dwh
+    volumes:
+      - postgres-dwh-volume:/var/lib/postgresql/data
+    ports:
+      - 5455:5432
+    restart: always
+
+  ###########################################################
+  ## OPEN METADATA
+  ##########################################################
+
+  mysql:
+    container_name: openmetadata_mysql
+    image: docker.getcollate.io/openmetadata/db:1.0.0
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+    expose:
+      - 3306
+    ports:
+      - "3306:3306"
+    volumes:
+     - mysql-openmetadata:/var/lib/mysql
+    healthcheck:
+      test: mysql --user=root --password=$$MYSQL_ROOT_PASSWORD --silent --execute "use openmetadata_db"
+      interval: 15s
+      timeout: 10s
+      retries: 10
+
+  elasticsearch:
+    container_name: openmetadata_elasticsearch
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.2
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1024m -Xmx1024m
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+  openmetadata-server:
+    container_name: openmetadata_server
+    restart: always
+    image: docker.getcollate.io/openmetadata/server:1.0.0
+    environment:
+      # OpenMetadata Server Authentication Configuration
+      AUTHORIZER_CLASS_NAME: ${AUTHORIZER_CLASS_NAME:-org.openmetadata.service.security.DefaultAuthorizer}
+      AUTHORIZER_REQUEST_FILTER: ${AUTHORIZER_REQUEST_FILTER:-org.openmetadata.service.security.JwtFilter}
+      AUTHORIZER_ADMIN_PRINCIPALS: ${AUTHORIZER_ADMIN_PRINCIPALS:-[admin]}
+      AUTHORIZER_ALLOWED_REGISTRATION_DOMAIN: ${AUTHORIZER_ALLOWED_REGISTRATION_DOMAIN:-["all"]}
+      AUTHORIZER_INGESTION_PRINCIPALS: ${AUTHORIZER_INGESTION_PRINCIPALS:-[ingestion-bot]}
+      AUTHORIZER_PRINCIPAL_DOMAIN: ${AUTHORIZER_PRINCIPAL_DOMAIN:-"openmetadata.org"}
+      AUTHORIZER_ENFORCE_PRINCIPAL_DOMAIN: ${AUTHORIZER_ENFORCE_PRINCIPAL_DOMAIN:-false}
+      AUTHORIZER_ENABLE_SECURE_SOCKET: ${AUTHORIZER_ENABLE_SECURE_SOCKET:-false}
+      AUTHENTICATION_PROVIDER: ${AUTHENTICATION_PROVIDER:-basic}
+      CUSTOM_OIDC_AUTHENTICATION_PROVIDER_NAME: ${CUSTOM_OIDC_AUTHENTICATION_PROVIDER_NAME:-""}
+      AUTHENTICATION_PUBLIC_KEYS: ${AUTHENTICATION_PUBLIC_KEYS:-[http://localhost:8585/api/v1/system/config/jwks]}
+      AUTHENTICATION_AUTHORITY: ${AUTHENTICATION_AUTHORITY:-https://accounts.google.com}
+      AUTHENTICATION_CLIENT_ID: ${AUTHENTICATION_CLIENT_ID:-""}
+      AUTHENTICATION_CALLBACK_URL: ${AUTHENTICATION_CALLBACK_URL:-""}
+      AUTHENTICATION_JWT_PRINCIPAL_CLAIMS: ${AUTHENTICATION_JWT_PRINCIPAL_CLAIMS:-[email,preferred_username,sub]}
+      AUTHENTICATION_ENABLE_SELF_SIGNUP: ${AUTHENTICATION_ENABLE_SELF_SIGNUP:-true}
+      # JWT Configuration
+      RSA_PUBLIC_KEY_FILE_PATH: ${RSA_PUBLIC_KEY_FILE_PATH:-"./conf/public_key.der"}
+      RSA_PRIVATE_KEY_FILE_PATH: ${RSA_PRIVATE_KEY_FILE_PATH:-"./conf/private_key.der"}
+      JWT_ISSUER: ${JWT_ISSUER:-"open-metadata.org"}
+      JWT_KEY_ID: ${JWT_KEY_ID:-"Gb389a-9f76-gdjs-a92j-0242bk94356"}
+      # OpenMetadata Server Pipeline Service Client Configuration
+      PIPELINE_SERVICE_CLIENT_ENDPOINT: ${PIPELINE_SERVICE_CLIENT_ENDPOINT:-http://ingestion:8080}
+      SERVER_HOST_API_URL: ${SERVER_HOST_API_URL:-http://openmetadata-server:8585/api}
+      PIPELINE_SERVICE_CLIENT_VERIFY_SSL: ${PIPELINE_SERVICE_CLIENT_VERIFY_SSL:-"no-ssl"}
+      PIPELINE_SERVICE_CLIENT_SSL_CERT_PATH: ${PIPELINE_SERVICE_CLIENT_SSL_CERT_PATH:-""}
+      # Database configuration for MySQL
+      DB_DRIVER_CLASS: ${DB_DRIVER_CLASS:-com.mysql.cj.jdbc.Driver}
+      DB_SCHEME: ${DB_SCHEME:-mysql}
+      DB_USE_SSL: ${DB_USE_SSL:-false}
+      DB_USER: ${DB_USER:-openmetadata_user}
+      DB_USER_PASSWORD: ${DB_USER_PASSWORD:-openmetadata_password}
+      DB_HOST: ${DB_HOST:-mysql}
+      DB_PORT: ${DB_PORT:-3306}
+      OM_DATABASE: ${OM_DATABASE:-openmetadata_db}
+      # ElasticSearch Configurations
+      ELASTICSEARCH_HOST: ${ELASTICSEARCH_HOST:- elasticsearch}
+      ELASTICSEARCH_PORT: ${ELASTICSEARCH_PORT:-9200}
+      ELASTICSEARCH_SCHEME: ${ELASTICSEARCH_SCHEME:-http}
+      ELASTICSEARCH_USER: ${ELASTICSEARCH_USER:-""}
+      ELASTICSEARCH_PASSWORD: ${ELASTICSEARCH_PASSWORD:-""}
+      # Heap OPTS Configurations
+      OPENMETADATA_HEAP_OPTS: ${OPENMETADATA_HEAP_OPTS:--Xmx1G -Xms1G}
+      # Application Config
+      CUSTOM_LOGO_URL_PATH: ${CUSTOM_LOGO_URL_PATH:-""}
+      CUSTOM_MONOGRAM_URL_PATH: ${CUSTOM_MONOGRAM_URL_PATH:-""}
+      OM_MAX_FAILED_LOGIN_ATTEMPTS: ${OM_MAX_FAILED_LOGIN_ATTEMPTS:-3}
+      OM_LOGIN_ACCESS_BLOCK_TIME: ${OM_LOGIN_ACCESS_BLOCK_TIME:-600}
+      OM_JWT_EXPIRY_TIME: ${OM_JWT_EXPIRY_TIME:-3600}
+      # Mask passwords values in UI
+      MASK_PASSWORDS_API: ${MASK_PASSWORDS_API:-false}
+    expose:
+      - 8585
+      - 8586
+    ports:
+      - "8585:8585"
+      - "8586:8586"
+    depends_on:
+      elasticsearch:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8586/healthcheck" ]
+
+  ingestion:
+    container_name: openmetadata_ingestion
+    image: docker.getcollate.io/openmetadata/ingestion:1.0.0
+    depends_on:
+      elasticsearch:
+        condition: service_started
+      mysql:
+        condition: service_healthy
+      openmetadata-server:
+        condition: service_started
+    environment:
+      AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session"
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__OPENMETADATA_AIRFLOW_APIS__DAG_GENERATED_CONFIGS: "/opt/airflow/dag_generated_configs"
+      DB_HOST: ${AIRFLOW_DB_HOST:-mysql}
+      DB_PORT: ${AIRFLOW_DB_PORT:-3306}
+      AIRFLOW_DB: ${AIRFLOW_DB:-airflow_db}
+      DB_SCHEME: ${AIRFLOW_DB_SCHEME:-mysql+pymysql}
+      DB_USER: ${AIRFLOW_DB_USER:-airflow_user}
+      DB_PASSWORD: ${AIRFLOW_DB_PASSWORD:-airflow_pass}
+    entrypoint: /bin/bash
+    command:
+      - "/opt/airflow/ingestion_dependency.sh"
+    expose:
+      - 8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - ingestion-volume-dag-airflow:/opt/airflow/dag_generated_configs
+      - ingestion-volume-dags:/opt/airflow/dags
+      - ingestion-volume-tmp:/tmp
+
+  ###########################################################
+  ## MINIO
+  ##########################################################
+
+  s3_minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    volumes:
+      - minio_storage:/data
+    environment:
+      MINIO_ACCESS_KEY: minio_admin
+      MINIO_SECRET_KEY: minio_password
+    command: server /data --console-address ":9090" 
+    restart: always
+
+  s3_minio_buckets:
+    image: minio/mc
+    depends_on:
+        - s3_minio
+    entrypoint: >
+        /bin/sh -c "
+        /usr/bin/mc config host add s3_minio http://host.docker.internal:9000 minio_admin minio_password;
+        /usr/bin/mc rm -r --force s3_minio/raw;
+        /usr/bin/mc mb s3_minio/raw;
+        /usr/bin/mc rm -r --force s3_minio/dbt;
+        /usr/bin/mc mb s3_minio/dbt;
+        exit 0;
+        "
+  ###########################################################
+  ## AIRBYTE
+  ##########################################################
+  init:
+    image: airbyte/init:${VERSION}
+    logging: *default-logging
+    container_name: init
+    command: /bin/sh -c "./scripts/create_mount_directories.sh /local_parent ${HACK_LOCAL_ROOT_PARENT} ${LOCAL_ROOT}"
+    environment:
+      - LOCAL_ROOT=${LOCAL_ROOT}
+      - HACK_LOCAL_ROOT_PARENT=${HACK_LOCAL_ROOT_PARENT}
+    volumes:
+      - ${HACK_LOCAL_ROOT_PARENT}:/local_parent
+  
+  bootloader:
+    image: airbyte/bootloader:${VERSION}
+    logging: *default-logging
+    container_name: airbyte-bootloader
+    environment:
+      - AIRBYTE_VERSION=${VERSION}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_USER=${DATABASE_USER}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LOCAL_CONNECTOR_CATALOG_PATH=${LOCAL_CONNECTOR_CATALOG_PATH}
+    depends_on:
+      init:
+        condition: service_completed_successfully
+  
+  db:
+    image: airbyte/db:${VERSION}
+    logging: *default-logging
+    container_name: airbyte-db
+    restart: unless-stopped
+    environment:
+      - CONFIG_DATABASE_PASSWORD=${CONFIG_DATABASE_PASSWORD:-}
+      - CONFIG_DATABASE_URL=${CONFIG_DATABASE_URL:-}
+      - CONFIG_DATABASE_USER=${CONFIG_DATABASE_USER:-}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_USER=${DATABASE_USER}
+      - POSTGRES_PASSWORD=${DATABASE_PASSWORD}
+      - POSTGRES_USER=${DATABASE_USER}
+    volumes:
+      - db:/var/lib/postgresql/data
+  
+  worker:
+    image: airbyte/worker:${VERSION}
+    logging: *default-logging
+    container_name: airbyte-worker
+    restart: unless-stopped
+    environment:
+      - AIRBYTE_VERSION=${VERSION}
+      - AUTO_DISABLE_FAILING_CONNECTIONS=${AUTO_DISABLE_FAILING_CONNECTIONS}
+      - CONFIG_DATABASE_PASSWORD=${CONFIG_DATABASE_PASSWORD:-}
+      - CONFIG_DATABASE_URL=${CONFIG_DATABASE_URL:-}
+      - CONFIG_DATABASE_USER=${CONFIG_DATABASE_USER:-}
+      - CONFIGS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION=${CONFIGS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION:-}
+      - CONFIG_ROOT=${CONFIG_ROOT}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_USER=${DATABASE_USER}
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE}
+      - INTERNAL_API_HOST=${INTERNAL_API_HOST}
+      - JOBS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION=${JOBS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION:-}
+      - JOB_MAIN_CONTAINER_CPU_LIMIT=${JOB_MAIN_CONTAINER_CPU_LIMIT}
+      - JOB_MAIN_CONTAINER_CPU_REQUEST=${JOB_MAIN_CONTAINER_CPU_REQUEST}
+      - JOB_MAIN_CONTAINER_MEMORY_LIMIT=${JOB_MAIN_CONTAINER_MEMORY_LIMIT}
+      - JOB_MAIN_CONTAINER_MEMORY_REQUEST=${JOB_MAIN_CONTAINER_MEMORY_REQUEST}
+      - LOCAL_DOCKER_MOUNT=${LOCAL_DOCKER_MOUNT}
+      - LOCAL_ROOT=${LOCAL_ROOT}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - LOG_CONNECTOR_MESSAGES=${LOG_CONNECTOR_MESSAGES}
+      - MAX_CHECK_WORKERS=${MAX_CHECK_WORKERS}
+      - MAX_DISCOVER_WORKERS=${MAX_DISCOVER_WORKERS}
+      - MAX_SPEC_WORKERS=${MAX_SPEC_WORKERS}
+      - MAX_SYNC_WORKERS=${MAX_SYNC_WORKERS}
+      - MAX_NOTIFY_WORKERS=${MAX_NOTIFY_WORKERS}
+      - SHOULD_RUN_NOTIFY_WORKFLOWS=${SHOULD_RUN_NOTIFY_WORKFLOWS}
+      - NORMALIZATION_JOB_MAIN_CONTAINER_MEMORY_LIMIT=${NORMALIZATION_JOB_MAIN_CONTAINER_MEMORY_LIMIT}
+      - NORMALIZATION_JOB_MAIN_CONTAINER_MEMORY_REQUEST=${NORMALIZATION_JOB_MAIN_CONTAINER_MEMORY_REQUEST}
+      - NORMALIZATION_JOB_MAIN_CONTAINER_CPU_LIMIT=${NORMALIZATION_JOB_MAIN_CONTAINER_CPU_LIMIT}
+      - NORMALIZATION_JOB_MAIN_CONTAINER_CPU_REQUEST=${NORMALIZATION_JOB_MAIN_CONTAINER_CPU_REQUEST}
+      - SECRET_PERSISTENCE=${SECRET_PERSISTENCE}
+      - SYNC_JOB_MAX_ATTEMPTS=${SYNC_JOB_MAX_ATTEMPTS}
+      - SYNC_JOB_MAX_TIMEOUT_DAYS=${SYNC_JOB_MAX_TIMEOUT_DAYS}
+      - TEMPORAL_HOST=${TEMPORAL_HOST}
+      - TRACKING_STRATEGY=${TRACKING_STRATEGY}
+      - WEBAPP_URL=${WEBAPP_URL}
+      - WORKSPACE_DOCKER_MOUNT=${WORKSPACE_DOCKER_MOUNT}
+      - WORKSPACE_ROOT=${WORKSPACE_ROOT}
+      - METRIC_CLIENT=${METRIC_CLIENT}
+      - OTEL_COLLECTOR_ENDPOINT=${OTEL_COLLECTOR_ENDPOINT}
+      - JOB_ERROR_REPORTING_STRATEGY=${JOB_ERROR_REPORTING_STRATEGY}
+      - JOB_ERROR_REPORTING_SENTRY_DSN=${JOB_ERROR_REPORTING_SENTRY_DSN}
+      - ACTIVITY_MAX_ATTEMPT=${ACTIVITY_MAX_ATTEMPT}
+      - ACTIVITY_INITIAL_DELAY_BETWEEN_ATTEMPTS_SECONDS=${ACTIVITY_INITIAL_DELAY_BETWEEN_ATTEMPTS_SECONDS}
+      - ACTIVITY_MAX_DELAY_BETWEEN_ATTEMPTS_SECONDS=${ACTIVITY_MAX_DELAY_BETWEEN_ATTEMPTS_SECONDS}
+      - WORKFLOW_FAILURE_RESTART_DELAY_SECONDS=${WORKFLOW_FAILURE_RESTART_DELAY_SECONDS}
+      - AUTO_DETECT_SCHEMA=${AUTO_DETECT_SCHEMA}
+      - USE_STREAM_CAPABLE_STATE=${USE_STREAM_CAPABLE_STATE}
+      - MICRONAUT_ENVIRONMENTS=${WORKERS_MICRONAUT_ENVIRONMENTS}
+      - APPLY_FIELD_SELECTION=${APPLY_FIELD_SELECTION}
+      - FIELD_SELECTION_WORKSPACES=${FIELD_SELECTION_WORKSPACES}
+    configs:
+      - flags
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - workspace:${WORKSPACE_ROOT}
+      - ${LOCAL_ROOT}:${LOCAL_ROOT}
+    ports:
+      - "9000"
+    depends_on:
+      bootloader:
+        condition: service_completed_successfully
+  
+  server:
+    image: airbyte/server:${VERSION}
+    logging: *default-logging
+    container_name: airbyte-server
+    restart: unless-stopped
+    environment:
+      - AIRBYTE_ROLE=${AIRBYTE_ROLE:-}
+      - AIRBYTE_VERSION=${VERSION}
+      - CONFIG_DATABASE_PASSWORD=${CONFIG_DATABASE_PASSWORD:-}
+      - CONFIG_DATABASE_URL=${CONFIG_DATABASE_URL:-}
+      - CONFIG_DATABASE_USER=${CONFIG_DATABASE_USER:-}
+      - CONFIGS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION=${CONFIGS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION:-}
+      - CONFIG_ROOT=${CONFIG_ROOT}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_USER=${DATABASE_USER}
+      - JOB_MAIN_CONTAINER_CPU_LIMIT=${JOB_MAIN_CONTAINER_CPU_LIMIT}
+      - JOB_MAIN_CONTAINER_CPU_REQUEST=${JOB_MAIN_CONTAINER_CPU_REQUEST}
+      - JOB_MAIN_CONTAINER_MEMORY_LIMIT=${JOB_MAIN_CONTAINER_MEMORY_LIMIT}
+      - JOB_MAIN_CONTAINER_MEMORY_REQUEST=${JOB_MAIN_CONTAINER_MEMORY_REQUEST}
+      - JOBS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION=${JOBS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION:-}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - NEW_SCHEDULER=${NEW_SCHEDULER}
+      - SECRET_PERSISTENCE=${SECRET_PERSISTENCE}
+      - TEMPORAL_HOST=${TEMPORAL_HOST}
+      - TRACKING_STRATEGY=${TRACKING_STRATEGY}
+      - JOB_ERROR_REPORTING_STRATEGY=${JOB_ERROR_REPORTING_STRATEGY}
+      - JOB_ERROR_REPORTING_SENTRY_DSN=${JOB_ERROR_REPORTING_SENTRY_DSN}
+      - WEBAPP_URL=${WEBAPP_URL}
+      - WORKER_ENVIRONMENT=${WORKER_ENVIRONMENT}
+      - WORKSPACE_ROOT=${WORKSPACE_ROOT}
+      - GITHUB_STORE_BRANCH=${GITHUB_STORE_BRANCH}
+      - MICRONAUT_ENVIRONMENTS=${WORKERS_MICRONAUT_ENVIRONMENTS}
+      - AUTO_DETECT_SCHEMA=${AUTO_DETECT_SCHEMA}
+      - MAX_NOTIFY_WORKERS=5
+      - SHOULD_RUN_NOTIFY_WORKFLOWS=${SHOULD_RUN_NOTIFY_WORKFLOWS}
+    ports:
+      - "8001"
+    configs:
+      - flags
+    volumes:
+      - workspace:${WORKSPACE_ROOT}
+      - data:${CONFIG_ROOT}
+      - ${LOCAL_ROOT}:${LOCAL_ROOT}
+    depends_on:
+      bootloader:
+        condition: service_completed_successfully
+  
+  webapp:
+    image: airbyte/webapp:${VERSION}
+    logging: *default-logging
+    container_name: airbyte-webapp
+    restart: unless-stopped
+    ports:
+      - "56174:80"
+    environment:
+      - INTERNAL_API_HOST=${INTERNAL_API_HOST}
+      - CONNECTOR_BUILDER_API_HOST=${CONNECTOR_BUILDER_API_HOST}
+      - TRACKING_STRATEGY=${TRACKING_STRATEGY}
+    depends_on:
+      bootloader:
+        condition: service_completed_successfully
+  
+  airbyte-temporal:
+    image: airbyte/temporal:${VERSION}
+    logging: *default-logging
+    container_name: airbyte-temporal
+    restart: unless-stopped
+    environment:
+      - DB=postgresql
+      - DB_PORT=${DATABASE_PORT}
+      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/development.yaml
+      - LOG_LEVEL=${LOG_LEVEL}
+      - POSTGRES_PWD=${DATABASE_PASSWORD}
+      - POSTGRES_SEEDS=${DATABASE_HOST}
+      - POSTGRES_USER=${DATABASE_USER}
+    volumes:
+      - ./temporal/dynamicconfig:/etc/temporal/config/dynamicconfig
+  
+  airbyte-cron:
+    image: airbyte/cron:${VERSION}
+    logging: *default-logging
+    container_name: airbyte-cron
+    restart: unless-stopped
+    environment:
+      - AIRBYTE_VERSION=${VERSION}
+      - CONFIGS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION=${CONFIGS_DATABASE_MINIMUM_FLYWAY_MIGRATION_VERSION}
+      - DATABASE_PASSWORD=${DATABASE_PASSWORD}
+      - DATABASE_URL=${DATABASE_URL}
+      - DATABASE_USER=${DATABASE_USER}
+      - DEPLOYMENT_MODE=${DEPLOYMENT_MODE}
+      - LOG_LEVEL=${LOG_LEVEL}
+      - REMOTE_CONNECTOR_CATALOG_URL=${REMOTE_CONNECTOR_CATALOG_URL}
+      - TEMPORAL_HISTORY_RETENTION_IN_DAYS=${TEMPORAL_HISTORY_RETENTION_IN_DAYS}
+      - UPDATE_DEFINITIONS_CRON_ENABLED=${UPDATE_DEFINITIONS_CRON_ENABLED}
+      - WORKSPACE_ROOT=${WORKSPACE_ROOT}
+      - MICRONAUT_ENVIRONMENTS=${CRON_MICRONAUT_ENVIRONMENTS}
+    configs:
+      - flags
+    volumes:
+      - workspace:${WORKSPACE_ROOT}
+    depends_on:
+      bootloader:
+        condition: service_completed_successfully
+  
+  airbyte-connector-builder-server:
+    image: airbyte/connector-builder-server:${VERSION} # Replace with airbyte/connector-atelier-server:${VERSION} to test the builder micronaut refactor
+    logging: *default-logging
+    container_name: airbyte-connector-builder-server
+    restart: unless-stopped
+    ports:
+      - 80
+    environment:
+      - AIRBYTE_VERSION=${VERSION}
+      - CDK_VERSION=${CDK_VERSION}
+      - PYTHON_VERSION=${PYTHON_VERSION}
+    depends_on:
+      bootloader:
+        condition: service_completed_successfully
+
+  airbyte-proxy:
+    image: airbyte/proxy:${VERSION}
+    container_name: airbyte-proxy
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+      - "8003:8003"
+    environment:
+      - BASIC_AUTH_USERNAME=${BASIC_AUTH_USERNAME}
+      - BASIC_AUTH_PASSWORD=${BASIC_AUTH_PASSWORD}
+      - BASIC_AUTH_PROXY_TIMEOUT=${BASIC_AUTH_PROXY_TIMEOUT}
+    depends_on:
+      - webapp
+      - server
+
+  # sftp:
+  #   image: atmoz/sftp
+  #   restart: always
+  #   volumes:
+  #     - ${PWD:-.}/sftp/data:/home/airflow/data
+  #     - ${PWD:-.}/sftp/keys/ssh_host_rsa_key.pub:/home/${SFTP_USERNAME}/.ssh/id_rsa.pub:ro
+  #     - ${PWD:-.}/sftp/keys/ssh_host_ed25519_key.pub:/home/${SFTP_USERNAME}/.ssh/id_ed25519.pub:ro
+  #   ports:
+  #     - "2222:22"
+  #   command: ${SFTP_USERNAME}:${SFTP_PASSWORD}:1000::data
+
+volumes:
+  workspace:
+    name: ${WORKSPACE_DOCKER_MOUNT}
+  data:
+    name: ${DATA_DOCKER_MOUNT}
+  db:
+    name: ${DB_DOCKER_MOUNT}
+  postgres-dwh-volume:
+  minio_storage:
+  postgres-db-volume:
+  mysql-openmetadata:
+  ingestion-volume-dag-airflow:
+  ingestion-volume-dags:
+  ingestion-volume-tmp:
+  es-data:
+configs:
+  flags:
+    file: ./flags.yml

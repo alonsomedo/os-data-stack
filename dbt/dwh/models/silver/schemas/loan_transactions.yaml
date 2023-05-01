@@ -1,0 +1,42 @@
+version: 2
+
+models:
+  - name: loan_transactions
+    description: Data correspond to the transactions performed in a specific date. This data will be loaded incrementally.
+    owner: "Alonso MD"
+
+    columns:
+      - name: date
+        description: date of the transaction
+
+      - name: customerId
+        description: This is a unique identifier for the event
+        tests:
+          - unique
+          - not_null
+
+      - name: paymentPeriod
+        description: term of the loan
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 12
+              strictly: false 
+
+      - name: loanAmount
+        description: amount requested by the customer.
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 1000
+              strictly: false 
+
+      - name: currencyType
+        description: currency of the loan (USD, EUR)
+
+      - name: evaluationChannel
+        description: channel by which the loan was sold
+
+      - name: interestRate
+        description: rate of the loan
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 0.05

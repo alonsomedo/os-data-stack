@@ -1,0 +1,47 @@
+version: 2
+
+models:
+  - name: loan_transactions_w_drivers
+    description: This dataset is the combination of daily loans with customer drivers. It's used by the data science team.
+    owner: "Data Science"
+
+    columns:
+
+      - name: date
+        description: date of the transaction
+
+      - name: customerId
+        description: This is a unique identifier for the event
+        tests:
+          - unique
+          - not_null
+
+      - name: paymentPeriod
+        description: term of the loan
+
+      - name: loanAmount
+        description: amount requested by the customer.
+
+      - name: currencyType
+        description: currency of the loan (USD, EUR)
+
+      - name: evaluationChannel
+        description: channel by which the loan was sold
+
+      - name: interest_rate
+        description: rate of the loan
+
+      - name: gender
+        description: gender of the customer, sometimes this field is wrong.
+      
+      - name: monthly_salary
+        description: monthly salary in USD.
+
+      - name: health_score
+        description: score - it measures how important is the customer for the bank.
+
+      - name: current_debt
+        description: current debt that the customer has with our bank.
+
+      - name: category
+        description: segment of the customer.

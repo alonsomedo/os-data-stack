@@ -1,0 +1,16 @@
+version: 2
+sources:
+ - name: dwh
+   schema: airbyte
+   tables:
+    - name: airbyte_daily_customer_information_cdc
+      identifier: daily_customer_information_cdc
+    - name: airbyte_daily_customer_drivers
+      identifier: daily_customer_drivers
+    - name: airbyte_daily_loan_transactions
+      identifier: daily_loan_transactions
+      # loaded_at_field: date
+      # freshness:
+      #  warn_after: {count: 1, period: hour}
+      #  error_after: {count: 24, period: hour}
+

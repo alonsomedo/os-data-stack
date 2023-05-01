@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: agg_loan_transactions
+    description: This dataset is an aggregated version of the loan_transactions_w_drivers model. It's used by the data science team.
+    owner: "Data Science"
+
+    columns:
+
+      - name: date
+        description: date of the transaction
+
+      - name: paymentPeriod
+        description: term of the loan
+
+      - name: evaluationChannel
+        description: channel by which the loan was sold
+
+      - name: category
+        description: segment of the customer.
+
+      - name: currencyType
+        description: currency of the loan (USD, EUR)
+      
+      - name: gender
+        description: gender of the customer, sometimes this field is wrong.

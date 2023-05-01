@@ -1,0 +1,41 @@
+version: 2
+
+models:
+  - name: daily_customer_drivers
+    description: This data is generated daily from the RiskModeling area. The data that is sent is an snapshot of the day. This data will be loaded incrementally.
+    owner: "Alonso MD"
+    
+    columns:
+      - name: date
+        description: Indicates when the record was created.
+
+      - name: customerId
+        description: This is a unique identifier for the event
+        tests:
+          - unique
+          - not_null
+
+      - name: monthlysalary
+        description: monthly salary in USD.
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 600
+              max_value: 150000 
+              strictly: false 
+
+      - name: healthscore
+        description: score - it measures how important is the customer for the bank.
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              min_value: 100
+              max_value: 900 
+              strictly: false 
+
+      - name: currentdebt
+        description: current debt that the customer has with our bank.
+
+      - name: category
+        description: segment of the customer.
+
+      - name: isRiskyCustomer
+        description: flag that indicates if the customer is a potential risk for a loan.

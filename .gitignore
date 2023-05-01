@@ -1,0 +1,6 @@
+__pycache__
+env/
+logs/
+temporal/
+flags*/
+plugins/

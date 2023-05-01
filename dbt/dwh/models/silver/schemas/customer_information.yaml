@@ -1,0 +1,44 @@
+version: 2
+
+models:
+  - name: customer_information
+    description: Contains information about customers. This data needs to be treated with an UPSERT technique because per day only contains new and modified records.
+    tags: ['PII']
+    owner: "Alonso MD"
+
+    columns:
+      - name: date
+        description: Indicates when was the record created or modified.
+
+      - name: customerId
+        description: This is a unique identifier for the event
+        tests:
+          - unique
+          - not_null
+
+      - name: firstName
+        description: first name of the bank customer.
+        tags: ['PII']
+        tests:
+          - not_null
+
+      - name: lastName
+        description: last name of the bank customer.
+        tags: ['PII']
+        tests:
+          - not_null
+
+      - name: phone
+        description: home phone number of the customer.
+
+      - name: email
+        description: email provided by the customer.
+
+      - name: gender
+        description: gender of the customer, sometimes this field is wrong.
+      
+      - name: address
+        description: place where the customer lives.
+
+      - name: is_active
+        description: flag that indicates if the client is still doing transactions with the bank.
