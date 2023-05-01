@@ -198,21 +198,6 @@ Enter a valid email when trying to log in.
 1. Select `Services` in the left sidebar.
 2. Select `Add New Service` in the right top corner.
 3. Select `Pipeline Services` from the drop down list.
-4. Select `Airbyte` and then `Next`
-5. Enter a name for your service connection and select `Next`
-6. Enter the below configuration:
-    - Host_and_Port: `http://host.docker.internal:8000`
-    - Metadata_Database_Connection: `PostgresConnection`
-    - Username: `airbyte`
-    - Password: `password`
-7. Test your connection and save.
-8. Navigate to your airflow service connection and create a metadata ingestion. 
-9. Run the metadata ingestion.
-
-### Pipeline Services - Airbyte
-1. Select `Services` in the left sidebar.
-2. Select `Add New Service` in the right top corner.
-3. Select `Pipeline Services` from the drop down list.
 4. Select `Airflow` and then `Next`
 5. Enter a name for your service connection and select `Next`
 6. Enter the below configuration:
@@ -222,6 +207,21 @@ Enter a valid email when trying to log in.
     - Password: `airflow`
     - Host_and_Port: `host.docker.internal:5432`
     - Database: `dwh`
+7. Test your connection and save.
+8. Navigate to your airflow service connection and create a metadata ingestion. 
+9. Run the metadata ingestion.
+
+### Pipeline Services - Airbyte
+1. Select `Services` in the left sidebar.
+2. Select `Add New Service` in the right top corner.
+3. Select `Pipeline Services` from the drop down list.
+4. Select `Airbyte` and then `Next`
+5. Enter a name for your service connection and select `Next`
+6. Enter the below configuration:
+    - Host_and_Port: `http://host.docker.internal:8000`
+    - Metadata_Database_Connection: `PostgresConnection`
+    - Username: `airbyte`
+    - Password: `password`
 7. Test your connection and save.
 8. Navigate to your airflow service connection and create a metadata ingestion. 
 9. Run the metadata ingestion.
