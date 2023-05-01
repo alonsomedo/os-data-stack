@@ -100,7 +100,7 @@ Enter a valid email when trying to log in.
     - **Host:** `host.docker.internal`
     - **Username:** `airbyte`
     - **Password:** `password`
-    - **Port:**: `8000`
+    - **Port:** `8000`
 
 ---
 
@@ -109,7 +109,7 @@ Enter a valid email when trying to log in.
 2. Select sources (*left sidebar*) , in the search bar write `S3` and select it 
 3. Create the S3 connection for customer data
     - **Source_name:** `S3_customer_information_cdc`
-    - **Output_stream_name:** `daily_customer_information`
+    - **Output_stream_name:** `daily_customer_information_cdc`
     - **Pattern_of_files_to_replicate:** `customer/*.csv`
     - **Bucket:** `raw`
     - **Aws_access_key_id:** `minio_admin`
