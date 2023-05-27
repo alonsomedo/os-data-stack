@@ -138,7 +138,7 @@ In the below youtube video, I show you how to set up everything.
     - **Bucket:** `raw`
     - **Aws_access_key_id:** `minio_admin`
     - **Aws_secret_access_key:** `minio_password`
-    - **Path_prefix:** `customerDrivers/`
+    - **Path_prefix:** `transactions/`
     - **Endpoint:** `http://host.docker.internal:9000`
     - ***Scroll until the end and select `set up source`***
 5. Select Destinations (*left sidebar*), search for Postgres and select it.
