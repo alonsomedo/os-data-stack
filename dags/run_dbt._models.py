@@ -19,11 +19,18 @@ data_csv_directory = f'/{dag_path}/../data_csv/'
 
 # RUN
 run_command = f"\
-    dbt build \
+    dbt run \
     --profiles-dir {dbt_directory} \
     --project-dir {dbt_project} \
     --target prod_airflow"
 run_command += " --vars '{ target_date: {{ds}} }' "
+
+
+test_command = f"\
+    dbt test \
+    --profiles-dir {dbt_directory} \
+    --project-dir {dbt_project} \
+    --target prod_airflow"
 
 
 default_args = {
@@ -94,6 +101,11 @@ with DAG(
         bash_command=run_command + "--select gold"
     )
     
+    run_dbt_tests_models = BashOperator(
+        task_id='run_dbt_tests_models',
+        bash_command=test_command
+    )
+    
     @task(task_id="copy_dbt_target_files_to_s3")
     def copy_dbt_target_files_to_s3():
         s3_hook = S3Hook()
@@ -108,4 +120,4 @@ with DAG(
                           replace=True)
     
     
-    start >> run_dbt_bronze_models >> run_dbt_silver_models >> run_dbt_gold_models >> copy_dbt_target_files_to_s3() >> end
+    start >> run_dbt_bronze_models >> run_dbt_silver_models >> run_dbt_gold_models >> run_dbt_tests_models >> copy_dbt_target_files_to_s3() >> end
