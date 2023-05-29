@@ -2,11 +2,12 @@
     config(
         materialized='incremental',
         on_schema_change='fail',
-        unique_key=['date', 'customerId']
+        unique_key=['customerId']
     )
 }}
 WITH daily_customer_information AS (
-    SELECT * FROM {{ ref('raw_daily_customer_cdc') }}
+    SELECT * 
+    FROM {{ ref('raw_daily_customer_cdc') }}
 )
 SELECT
     date,
@@ -19,7 +20,6 @@ SELECT
     address,
     is_active
 FROM daily_customer_information
-WHERE date = '{{ var("target_date") }}'
 {% if is_incremental() %}
-    AND  date > (select max(date) from {{ this }})
+    WHERE date = '{{ var("target_date") }}'
 {% endif %}

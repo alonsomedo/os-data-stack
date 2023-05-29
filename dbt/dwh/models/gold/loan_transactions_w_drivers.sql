@@ -31,8 +31,8 @@ SELECT
     cd.category,
     cd.isRiskyCustomer
 FROM loan_transactions l
-INNER JOIN daily_customer_drivers cd ON l.date = cd.date and l.customerId = cd.customerId AND l.date = '{{ var("target_date") }}'
+INNER JOIN daily_customer_drivers cd ON l.date = cd.date and l.customerId = cd.customerId
 LEFT JOIN customer_information c ON l.customerId = c.customerId
 {% if is_incremental() %}
-    AND  l.date > (select max(date) from {{ this }})
+    WHERE l.date = '{{ var("target_date") }}'
 {% endif %}

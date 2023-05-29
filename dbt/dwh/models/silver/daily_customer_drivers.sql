@@ -31,7 +31,6 @@ SELECT
         ELSE false
     END isRiskyCustomer 
 FROM daily_customer_information
-WHERE date = '{{ var("target_date") }}'
 {% if is_incremental() %}
-    AND  date > (select max(date) from {{ this }})
+    WHERE date = '{{ var("target_date") }}'
 {% endif %}
