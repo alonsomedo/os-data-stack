@@ -26,9 +26,7 @@ SELECT
     Avg(healthScore) as health_score,
     Avg(monthlySalary) as monthly_salary
 FROM loan_transactions_w_drivers
-{% if is_incremental() %}
-    WHERE date = '{{ var("target_date") }}'
-{% endif %}
+where {{ date_filter_batch('l.date') }}
 GROUP BY 
     date,
     paymentPeriod,

@@ -20,6 +20,4 @@ SELECT
     evaluationChannel, 
     interestRate
 FROM daily_loan_transactions
-{% if is_incremental() %}
-    WHERE date = '{{ var("target_date") }}'
-{% endif %}
+where {{ date_filter_batch('date') }}
