@@ -1,7 +1,5 @@
 {{
     config(
-        materialized='incremental',
-        on_schema_change='fail',
         unique_key=['date','paymentPeriod', 'evaluationChannel', 'category', 'currencyType', 'gender']
     )
 }}

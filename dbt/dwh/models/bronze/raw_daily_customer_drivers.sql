@@ -1,9 +1,3 @@
-{{
-    config(
-        materialized='view',
-        on_schema_change='fail',
-    )
-}}
 
 WITH raw_daily_customer_drivers AS (
     SELECT 
