@@ -1,7 +1,5 @@
 {{
     config(
-        materialized='incremental',
-        on_schema_change='fail',
         unique_key=['customerId']
     )
 }}
@@ -20,6 +18,4 @@ SELECT
     address,
     is_active
 FROM daily_customer_information
-{% if is_incremental() %}
-    WHERE date = '{{ var("target_date") }}'
-{% endif %}
+where {{ date_filter_batch('date') }}

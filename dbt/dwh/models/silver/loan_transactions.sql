@@ -1,7 +1,5 @@
 {{
     config(
-        materialized='incremental',
-        on_schema_change='fail',
         unique_key=['date','customerId', 'paymentPeriod']
     )
 }}
@@ -20,6 +18,4 @@ SELECT
     evaluationChannel, 
     interestRate
 FROM daily_loan_transactions
-{% if is_incremental() %}
-    WHERE date = '{{ var("target_date") }}'
-{% endif %}
+where {{ date_filter_batch('date') }}

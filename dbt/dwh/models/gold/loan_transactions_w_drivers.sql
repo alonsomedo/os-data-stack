@@ -1,7 +1,5 @@
 {{
     config(
-        materialized='incremental',
-        on_schema_change='fail',
         unique_key=['date','customerId', 'paymentPeriod']
     )
 }}
@@ -33,6 +31,4 @@ SELECT
 FROM loan_transactions l
 INNER JOIN daily_customer_drivers cd ON l.date = cd.date and l.customerId = cd.customerId
 LEFT JOIN customer_information c ON l.customerId = c.customerId
-{% if is_incremental() %}
-    WHERE l.date = '{{ var("target_date") }}'
-{% endif %}
+where {{ date_filter_batch('l.date') }}
