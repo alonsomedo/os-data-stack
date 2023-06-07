@@ -1,5 +1,7 @@
 {{
     config(
+        materialized='incremental',
+        on_schema_change='fail',
         unique_key=['date','paymentPeriod', 'evaluationChannel', 'category', 'currencyType', 'gender']
     )
 }}
@@ -24,7 +26,9 @@ SELECT
     Avg(healthScore) as health_score,
     Avg(monthlySalary) as monthly_salary
 FROM loan_transactions_w_drivers
-where {{ date_filter_batch('date') }}
+{% if is_incremental() %}
+    WHERE date = '{{ var("target_date") }}'
+{% endif %}
 GROUP BY 
     date,
     paymentPeriod,

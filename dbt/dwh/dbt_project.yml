@@ -34,23 +34,20 @@ models:
   dwh:
     # Config indicated by + and applies to all files under models/example/
     bronze:
-      +materialized: view
-      +on_schema_change: "fail"
-      +schema: bronze
+      +materialized: table
+      schema: bronze
       +tags: 
         - "landing"
         - "raw"
 
     silver:
-      +materialized: incremental
-      +on_schema_change: "fail"      
-      +schema: silver
-      +tags: "curated"
+      +materialized: table
+      schema: silver
+      tags: "curated"
 
     gold:
-      +materialized: incremental
-      +on_schema_change: "fail"
-      +schema: gold
+      +materialized: table
+      schema: gold
       +tags: 
         - "aggregated"
         - "joined"
