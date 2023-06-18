@@ -2,7 +2,7 @@
     config(
         materialized='incremental',
         on_schema_change='fail',
-        unique_key=['date','customerId']
+        unique_key=['customerId']
     )
 }}
 WITH daily_customer_information AS (
