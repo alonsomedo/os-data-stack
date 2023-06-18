@@ -20,6 +20,4 @@ SELECT
     address,
     is_active
 FROM daily_customer_information
-{% if is_incremental() %}
-    WHERE date = '{{ var("target_date") }}'
-{% endif %}
+WHERE date = '{{ var("target_date") }}'
