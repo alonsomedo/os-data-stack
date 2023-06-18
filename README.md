@@ -90,7 +90,7 @@ In the below youtube video, I show you how to set up everything.
     - **Connection Type:** `Amazon Web Services`
     - **Connection Id:** `aws_default`
     - **Extra:** `{"aws_access_key_id": "minio_admin", "aws_secret_access_key": "minio_password", "endpoint_url": "http://host.docker.internal:9000"}`
-4. Create the Postgres connection (Optional, in case you want to use the stack for your own development)
+4. Create the Postgres connection
     - **Connection Type:** `Postgres`
     - **Connection Id:** `postgres_default`
     - **Host:** `postgres_dwh`
