@@ -249,7 +249,7 @@ In the below youtube video, I show you how to set up everything.
 3. Activate your environment by running:
     - Windows: `env/scripts/activate`
 4. Run the below command to install dbt:
-    - Windows: `pip install dbt-postgres==1.5.0`
+    - Windows: `pip install dbt-postgres==1.4.6`
 5. Navigate to the `dwh` project by running:
     - cd `dwh`
 6. Now you are able to run dbt commands, follow example below:
